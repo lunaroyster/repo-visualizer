@@ -4,8 +4,6 @@
     "prepare": "husky install"
   },
   "dependencies": {
-    "@actions/core": "^1.4.0",
-    "@actions/exec": "^1.1.0",
     "d3": "^7.0.0",
     "esbuild": "^0.12.15",
     "husky": "^7.0.1",
