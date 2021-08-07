@@ -1,24 +1,33 @@
-import React from 'react';
-import ReactDOMServer from 'react-dom/server';
-import fs from "fs"
+import React from "react";
+import ReactDOMServer from "react-dom/server";
+import fs from "fs";
 
-import { processDir } from "./process-dir.js"
-import { Tree } from "./Tree.tsx"
+import { processDir } from "./process-dir.js";
+import { Tree } from "./Tree.tsx";
+
+const defaultExcludedPaths = [];
 
 const main = async () => {
-  const maxDepth = process.env["max_depth"] || 9
-  const colorEncoding = process.env["color_encoding"] || "type"
-  const excludedPathsString = process.env["excluded_paths"] || "node_modules,bower_components,dist,out,build,eject,.next,.netlify,.yarn,.git,.vscode,package-lock.json,yarn.lock,.npm_cache,.jestcache"
-  const excludedPaths = excludedPathsString.split(",").map(str => str.trim())
-  const data = await processDir(`./`, excludedPaths);
+  const maxDepth = process.env["max_depth"] || 9;
+  const colorEncoding = process.env["color_encoding"] || "type";
+
+  const excludedPaths = fs.existsSync(".gitignore")
+    ? fs
+        .readFileSync(".gitignore", { encoding: "utf-8" })
+        .trim()
+        .split("\n")
+        .map((s) => s.trim())
+    : defaultExcludedPaths;
+
+  const data = await processDir(`./`, [...excludedPaths, ".git"]);
 
   const componentCodeString = ReactDOMServer.renderToStaticMarkup(
     <Tree data={data} maxDepth={+maxDepth} colorEncoding={colorEncoding} />
   );
 
-  const outputFile = process.env["output_file"] || "./diagram.svg"
+  const outputFile = process.env["output_file"] || "./diagram.svg";
 
-  await fs.writeFileSync(outputFile, componentCodeString)
-}
+  await fs.writeFileSync(outputFile, componentCodeString);
+};
 
-main()
+main();

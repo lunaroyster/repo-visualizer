@@ -8751,6 +8751,92 @@ var import_fs2 = __toModule(require("fs"));
 
 // src/process-dir.js
 var import_fs = __toModule(require("fs"));
+
+// src/getCommits.tsx
+var import_child_process = __toModule(require("child_process"));
+function parseRevString(revstring) {
+  const lines = revstring.split("\n");
+  const commits = [];
+  let curr = 0;
+  let commit = null;
+  while (curr < lines.length) {
+    let line = lines[curr];
+    if (line.startsWith("commit")) {
+      if (commit) {
+        commits.push(commit);
+      }
+      commit = {
+        hash: line.slice(7)
+      };
+    } else if (line.startsWith("Author: ")) {
+      if (!commit) {
+        throw new Error("expected commit");
+      }
+      commit.author = line.slice(8);
+    } else if (line.startsWith("Date: ")) {
+      if (!commit) {
+        throw new Error("expected commit");
+      }
+      commit.date = line.slice(8);
+    } else if (line.startsWith("    ")) {
+      if (!commit) {
+        throw new Error("expected commit");
+      }
+      if (!commit.msg)
+        commit.msg = "";
+      if (line.trim() !== "") {
+        commit.msg = commit.msg + (commit.msg ? "\n" : "") + `${line.slice(4)}`;
+      }
+    }
+    curr += 1;
+  }
+  if (commit)
+    commits.push(commit);
+  return commits;
+}
+function getCommits({
+  ref,
+  filePath,
+  since
+}) {
+  const fileArgs = filePath ? ["--", filePath] : [];
+  const sinceArgs = since ? [`--since=${since.toJSON()}`] : [];
+  const revstring = (0, import_child_process.execFileSync)("git", [
+    "rev-list",
+    "--format=medium",
+    "--max-count=1",
+    ...sinceArgs,
+    ref,
+    ...fileArgs
+  ], {
+    encoding: "utf-8"
+  });
+  const revs = revstring.trim();
+  return parseRevString(revs);
+}
+
+// src/getAuthor.tsx
+var import_child_process2 = __toModule(require("child_process"));
+function getAuthor({
+  ref,
+  filePath,
+  since
+}) {
+  const fileArgs = filePath ? ["--", filePath] : [];
+  const shortlog = (0, import_child_process2.execFileSync)("git", [
+    "shortlog",
+    "-n",
+    "-s",
+    ref,
+    ...fileArgs
+  ], {
+    encoding: "utf-8"
+  });
+  const topAuthor = shortlog.split("\n")[0].split("	")[1];
+  return topAuthor;
+}
+
+// src/process-dir.js
 var processDir = async (rootPath, excludedPaths = []) => {
   if (!rootPath) {
     console.log("no rootPath specified");
@@ -8761,12 +8847,16 @@ var processDir = async (rootPath, excludedPaths = []) => {
   const getFileStats = async (path = "") => {
     const stats = await import_fs.default.statSync(path);
     const name = path.split("/").filter(Boolean).slice(-1)[0];
+    const commits = getCommits({ ref: "HEAD", filePath: path });
+    const author = getAuthor({ ref: "HEAD", filePath: path });
     const size = stats.size;
     const relativePath = path.slice(rootPath.length + 1);
     return {
       name,
       path: relativePath,
-      size
+      size,
+      commits,
+      author
     };
   };
   const addItemToTree = async (path = "", isFolder = true) => {
@@ -16051,12 +16141,20 @@ var height = 1e3;
 var maxChildren = 9e3;
 var lastCommitAccessor = (d2) => {
   var _a, _b;
-  return new Date(((_b = (_a = d2.commits) == null ? void 0 : _a[0]) == null ? void 0 : _b.date) + "0");
+  return new Date((_b = (_a = d2.commits) == null ? void 0 : _a[0]) == null ? void 0 : _b.date);
 };
 var numberOfCommitsAccessor = (d2) => {
   var _a;
   return ((_a = d2 == null ? void 0 : d2.commits) == null ? void 0 : _a.length) || 0;
 };
+var authorColors = {};
+var randomColor = () => `#${(~~(Math.random() * (1 << 24))).toString(16)}`;
+function getAuthorColor(name) {
+  if (!authorColors[name]) {
+    authorColors[name] = randomColor();
+  }
+  return authorColors[name];
+}
 var Tree = ({ data, filesChanged = [], maxDepth = 9, colorEncoding = "type" }) => {
   const [selectedNodeId, setSelectedNodeId] = (0, import_react2.useState)(null);
   const cachedPositions = (0, import_react2.useRef)({});
@@ -16095,6 +16193,8 @@ var Tree = ({ data, filesChanged = [], maxDepth = 9, colorEncoding = "type" }) =
       return colorScale(numberOfCommitsAccessor(d2)) || "#f4f4f4";
     } else if (colorEncoding === "last-change") {
       return colorScale(lastCommitAccessor(d2)) || "#f4f4f4";
+    } else if (colorEncoding === "author") {
+      return getAuthorColor(d2.author || -1);
     }
   };
   const packedData = (0, import_react2.useMemo)(() => {
@@ -16291,13 +16391,28 @@ var Tree = ({ data, filesChanged = [], maxDepth = 9, colorEncoding = "type" }) =
     }, label));
   }), !filesChanged.length && colorEncoding === "type" && /* @__PURE__ */ import_react2.default.createElement(Legend, {
     fileTypes
-  }), !filesChanged.length && colorEncoding !== "type" && /* @__PURE__ */ import_react2.default.createElement(ColorLegend, {
+  }), !filesChanged.length && !["type", "author"].includes(colorEncoding) && /* @__PURE__ */ import_react2.default.createElement(ColorLegend, {
     scale: colorScale,
     extent: colorExtent,
     colorEncoding
-  }));
+  }), !filesChanged.length && colorEncoding === "author" && /* @__PURE__ */ import_react2.default.createElement(AuthorLegend, null));
 };
 var formatD = (d2) => typeof d2 === "number" ? d2 : timeFormat("%b %Y")(d2);
+var AuthorLegend = () => {
+  return /* @__PURE__ */ import_react2.default.createElement("g", {
+    transform: `translate(${width - 180}, ${height - Object.entries(authorColors).length * 15 - 20})`
+  }, Object.entries(authorColors).map(([name, color2], i) => /* @__PURE__ */ import_react2.default.createElement("g", {
+    key: i,
+    transform: `translate(0, ${i * 15})`
+  }, /* @__PURE__ */ import_react2.default.createElement("circle", {
+    r: "5",
+    fill: color2
+  }), /* @__PURE__ */ import_react2.default.createElement("text", {
+    x: "10",
+    style: { fontSize: "14px", fontWeight: 300 },
+    dominantBaseline: "middle"
+  }, name))));
+};
 var ColorLegend = ({ scale, extent, colorEncoding }) => {
   if (!scale || !scale.ticks)
     return null;
@@ -16501,12 +16616,12 @@ var getSortOrder = (item, cachedOrders, i = 0) => {
 };
 
 // src/index.jsx
+var defaultExcludedPaths = [];
 var main = async () => {
   const maxDepth = process.env["max_depth"] || 9;
   const colorEncoding = process.env["color_encoding"] || "type";
-  const excludedPathsString = process.env["excluded_paths"] || "node_modules,bower_components,dist,out,build,eject,.next,.netlify,.yarn,.git,.vscode,package-lock.json,yarn.lock,.npm_cache,.jestcache";
-  const excludedPaths = excludedPathsString.split(",").map((str) => str.trim());
-  const data = await processDir(`./`, excludedPaths);
+  const excludedPaths = import_fs2.default.existsSync(".gitignore") ? import_fs2.default.readFileSync(".gitignore", { encoding: "utf-8" }).trim().split("\n").map((s) => s.trim()) : defaultExcludedPaths;
+  const data = await processDir(`./`, [...excludedPaths, ".git"]);
   const componentCodeString = import_server.default.renderToStaticMarkup(/* @__PURE__ */ import_react3.default.createElement(Tree, {
     data,
     maxDepth: +maxDepth,

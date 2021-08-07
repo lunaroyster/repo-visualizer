@@ -1,4 +1,6 @@
 import fs from "fs";
+import getCommits from "./getCommits";
+import getAuthor from "./getAuthor";
 
 export const processDir = async (rootPath, excludedPaths = []) => {
   if (!rootPath) {
@@ -15,12 +17,16 @@ export const processDir = async (rootPath, excludedPaths = []) => {
   const getFileStats = async (path = "") => {
     const stats = await fs.statSync(path);
     const name = path.split("/").filter(Boolean).slice(-1)[0];
+    const commits = getCommits({ref: 'HEAD', filePath: path});
+    const author = getAuthor({ref: 'HEAD', filePath: path});
     const size = stats.size;
     const relativePath = path.slice(rootPath.length + 1);
     return {
       name,
       path: relativePath,
       size,
+      commits,
+      author,
     };
   };
   const addItemToTree = async (

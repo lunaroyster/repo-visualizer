@@ -31,7 +31,7 @@ type Props = {
   data: FileType;
   filesChanged: string[];
   maxDepth: number;
-  colorEncoding: "type" | "number-of-changes" | "last-change"
+  colorEncoding: "type" | "number-of-changes" | "last-change" | "author"
 };
 type ExtendedFileType = {
   extension?: string;
@@ -55,8 +55,22 @@ const looseFilesId = "__structure_loose_file__";
 const width = 1000;
 const height = 1000;
 const maxChildren = 9000;
-const lastCommitAccessor = (d) => new Date(d.commits?.[0]?.date + "0");
+const lastCommitAccessor = (d) => new Date(d.commits?.[0]?.date);
 const numberOfCommitsAccessor = (d) => d?.commits?.length || 0;
+
+const authorColors = {};
+
+const randomColor = () => `#${(~~(Math.random()*(1<<24))).toString(16)}`;
+
+
+function getAuthorColor(name: string): string {
+  if (!authorColors[name]) {
+    authorColors[name] = randomColor()
+  }
+  
+  return authorColors[name];
+}
+
 export const Tree = (
   { data, filesChanged = [], maxDepth = 9, colorEncoding = "type" }:
     Props,
@@ -115,6 +129,9 @@ export const Tree = (
       return colorScale(numberOfCommitsAccessor(d)) || "#f4f4f4";
     } else if (colorEncoding === "last-change") {
       return colorScale(lastCommitAccessor(d)) || "#f4f4f4";
+    } else if (colorEncoding === 'author') {
+      
+      return getAuthorColor(d.author || -1);
     }
   };
 
@@ -380,8 +397,12 @@ export const Tree = (
 
       {!filesChanged.length && colorEncoding === "type" &&
         <Legend fileTypes={fileTypes} />}
-      {!filesChanged.length && colorEncoding !== "type" &&
+      {!filesChanged.length && !["type", "author"].includes(colorEncoding) &&
         <ColorLegend scale={colorScale} extent={colorExtent} colorEncoding={colorEncoding} />}
+      {/* add author legend */}
+      {!filesChanged.length && colorEncoding === 'author' && (
+        <AuthorLegend />
+      )}
     </svg>
   );
 };
@@ -389,6 +410,33 @@ export const Tree = (
 const formatD = (d) => (
   typeof d === "number" ? d : timeFormat("%b %Y")(d)
 );
+
+const AuthorLegend = () => {
+  return (
+    <g
+      transform={`translate(${width - 180}, ${height - Object.entries(authorColors).length * 15 -
+        20})`}
+    >
+      {Object.entries(authorColors).map(([name, color], i) => (
+        <g key={i} transform={`translate(0, ${i * 15})`}>
+          <circle
+            r="5"
+            fill={color}
+          />
+          <text
+            x="10"
+            style={{ fontSize: "14px", fontWeight: 300 }}
+            dominantBaseline="middle"
+          >
+            {name}
+          </text>
+        </g>
+      ))}
+    </g>
+  );
+};
+
+
 const ColorLegend = ({ scale, extent, colorEncoding }) => {
   if (!scale || !scale.ticks) return null;
   const ticks = scale.ticks(10);
